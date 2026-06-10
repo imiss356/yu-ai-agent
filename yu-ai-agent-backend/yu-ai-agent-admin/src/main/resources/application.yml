@@ -1,0 +1,70 @@
+# 开发环境配置
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+  tomcat:
+    uri-encoding: UTF-8
+    accept-count: 1000
+    threads:
+      max: 800
+      min-spare: 100
+
+# Spring配置
+spring:
+  application:
+    name: techdoc-ai-admin
+  profiles:
+    active: druid
+
+  # AI 框架配置 (Spring AI)
+  ai:
+    dashscope:
+      api-key: 替换为您的API_KEY
+      chat:
+        options:
+          model: qwen-plus
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+# JWT 配置
+jwt:
+  secret: TechDocAiAssistantSecretKeyForJWTTokenGeneration2024!
+  expiration: 86400000
+
+# 接口文档配置 (Swagger / Knife4j)
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.yuaiagent.controller
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+# 第三方服务配置：搜索API
+search-api:
+  api-key: 替换为您的API_KEY
+
+# 日志配置
+logging:
+  level:
+    org.springframework.ai: DEBUG

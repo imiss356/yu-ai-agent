@@ -1,0 +1,11 @@
+# 开发环境配置
+server:
+  # 服务器的HTTP端口，默认为8127
+  port: 8127
+
+# Spring配置
+spring:
+  application:
+    name: yu-image-search-mcp-server
+  profiles:
+    active: sse
