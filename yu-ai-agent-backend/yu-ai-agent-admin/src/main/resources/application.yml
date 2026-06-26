@@ -16,14 +16,25 @@ spring:
     name: techdoc-ai-admin
   profiles:
     active: druid
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration
 
   # AI 框架配置 (Spring AI)
   ai:
     dashscope:
-      api-key: 替换为您的API_KEY
+      api-key: sk-ws-H.RYLXLME.mEQ7.MEUCIQDW5A1-WSBQIBbgcMFVULr1MInQ00D38-_cdnQzGeaQPQIgIx1BaJwfoVJrMQp16JWQSDUnyHGB6HzApqnDuKswYt8
       chat:
         options:
           model: qwen-plus
+    openai:
+      base-url: https://api.xiaomimimo.com
+      api-key: sk-cr38rymgdw5brzz9xbudjntzv7fkhvmri1t6twbrz9b465e3
+      chat:
+        options:
+          model: mimo-v2.5-pro
 
   data:
     redis:
@@ -59,6 +70,13 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+# 智谱 Embedding 配置
+zhipu:
+  embedding:
+    base-url: https://open.bigmodel.cn/api/paas/v4
+    api-key: 9bb0f4b7dcc24a11a6938391c2f695e7.gmHjPZjEdnko3rhW
+    model: Embedding-3
 
 # 第三方服务配置：搜索API
 search-api:

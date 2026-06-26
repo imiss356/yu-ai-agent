@@ -8,6 +8,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import java.util.List;
@@ -28,16 +29,17 @@ public class DocQAVectorStoreConfig
     private MyKeywordEnricher myKeywordEnricher;
 
     @Bean
-    VectorStore docQAVectorStore(EmbeddingModel dashscopeEmbeddingModel)
+    VectorStore docQAVectorStore(@Qualifier("zhipuEmbeddingModel") EmbeddingModel zhipuEmbeddingModel)
     {
-        SimpleVectorStore simpleVectorStore = SimpleVectorStore.builder(dashscopeEmbeddingModel).build();
+        SimpleVectorStore simpleVectorStore = SimpleVectorStore.builder(zhipuEmbeddingModel).build();
 
         List<Document> documentList = docQADocumentLoader.loadMarkdowns();
 
         List<Document> splitDocuments = myTokenTextSplitter.splitCustomized(documentList);
 
-        List<Document> enrichedDocuments = myKeywordEnricher.enrichDocuments(splitDocuments);
-        simpleVectorStore.add(enrichedDocuments);
+        // 暂时跳过关键词增强，直接使用切割后的文档
+        // List<Document> enrichedDocuments = myKeywordEnricher.enrichDocuments(splitDocuments);
+        simpleVectorStore.add(splitDocuments);
 
         return simpleVectorStore;
     }

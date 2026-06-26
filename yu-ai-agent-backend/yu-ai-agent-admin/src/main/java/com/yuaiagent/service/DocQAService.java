@@ -37,10 +37,10 @@ public class DocQAService
             如果文档中没有相关信息，请诚实告知用户，并给出相关建议。
             """;
 
-    public DocQAService(ChatModel dashscopeChatModel, RedisChatMemory redisChatMemory)
+    public DocQAService(ChatModel openAiChatModel, RedisChatMemory redisChatMemory)
     {
         this.chatMemory = redisChatMemory;
-        chatClient = ChatClient.builder(dashscopeChatModel)
+        chatClient = ChatClient.builder(openAiChatModel)
                 .defaultSystem(SYSTEM_PROMPT)
                 .defaultAdvisors(
                         MessageChatMemoryAdvisor.builder(chatMemory).build(),

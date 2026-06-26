@@ -17,9 +17,9 @@ public class QueryRewriter
     //该构造函数初始化QueryRewriter，使用ChatModel创建ChatClient.Builder
     // ，并构建RewriteQueryTransformer用于查询重写转换。
 
-    public QueryRewriter(ChatModel dashscopeChatModel)
+    public QueryRewriter(ChatModel openAiChatModel)
     {
-        ChatClient.Builder builder = ChatClient.builder(dashscopeChatModel);
+        ChatClient.Builder builder = ChatClient.builder(openAiChatModel);
         // 创建查询重写转换器
         queryTransformer = RewriteQueryTransformer.builder()
                 .chatClientBuilder(builder)

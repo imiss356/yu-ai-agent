@@ -25,7 +25,7 @@ public class SuperAgentService
     private ToolCallback[] allTools;
 
     @Resource
-    private ChatModel dashscopeChatModel;
+    private ChatModel openAiChatModel;
 
     private final ChatMemory chatMemory;
 
@@ -39,7 +39,7 @@ public class SuperAgentService
      */
     public SseEmitter doChatByStream(String message, String chatId)
     {
-        YuManus yuManus = new YuManus(allTools, dashscopeChatModel);
+        YuManus yuManus = new YuManus(allTools, openAiChatModel);
         yuManus.setChatId(chatId);
         yuManus.setChatMemory(chatMemory);
         return yuManus.runStream(message);
