@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 描述：抽象基础代理类，用于管理代理状态和执行流程。
@@ -24,6 +25,9 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 public abstract class BaseAgent
 {
+    /** 正在运行的 chatId 集合（全局共享，防止同一对话并发执行） */
+    private static final ConcurrentHashMap<String, Boolean> RUNNING_CHAT_IDS = new ConcurrentHashMap<>();
+
     // 核心属性
     private String name;
 
@@ -66,19 +70,29 @@ public abstract class BaseAgent
         {
             throw new RuntimeException("Cannot run agent with empty user prompt");
         }
+
+        // 并发去重：同一 chatId 不允许同时执行
+        if (StrUtil.isNotBlank(chatId))
+        {
+            if (RUNNING_CHAT_IDS.putIfAbsent(chatId, Boolean.TRUE) != null)
+            {
+                throw new RuntimeException("该对话正在执行中，请稍后再试 (chatId: " + chatId + ")");
+            }
+        }
+
         // 2、执行，更改状态
         this.state = AgentState.RUNNING;
-        
+
         // 加载记忆
-        if (StrUtil.isNotBlank(chatId) && chatMemory != null) 
+        if (StrUtil.isNotBlank(chatId) && chatMemory != null)
         {
             List<Message> savedMessages = chatMemory.get(chatId);
-            if (savedMessages != null) 
+            if (savedMessages != null)
             {
                 this.messageList = new ArrayList<>(savedMessages);
             }
         }
-        
+
         // 记录消息上下文
         messageList.add(new UserMessage(userPrompt));
         // 保存结果列表
@@ -101,12 +115,12 @@ public abstract class BaseAgent
                 state = AgentState.FINISHED;
                 results.add("Terminated: Reached max steps (" + maxSteps + ")");
             }
-            
+
             // 保存记忆
             if (StrUtil.isNotBlank(chatId) && chatMemory != null) {
                 chatMemory.add(chatId, messageList);
             }
-            
+
             return String.join("\n", results);
         } catch (Exception e) {
             state = AgentState.ERROR;
@@ -114,6 +128,10 @@ public abstract class BaseAgent
             return "执行错误" + e.getMessage();
         } finally {
             // 3、清理资源
+            if (StrUtil.isNotBlank(chatId))
+            {
+                RUNNING_CHAT_IDS.remove(chatId);
+            }
             this.cleanup();
         }
     }
@@ -134,6 +152,15 @@ public abstract class BaseAgent
         if (StrUtil.isBlank(userPrompt))
         {
             throw new RuntimeException("Cannot run agent with empty user prompt");
+        }
+
+        // 并发去重：同一 chatId 不允许同时执行
+        if (StrUtil.isNotBlank(chatId))
+        {
+            if (RUNNING_CHAT_IDS.putIfAbsent(chatId, Boolean.TRUE) != null)
+            {
+                throw new RuntimeException("该对话正在执行中，请稍后再试 (chatId: " + chatId + ")");
+            }
         }
 
         // 创建一个超时时间较长的 SseEmitter
@@ -191,6 +218,10 @@ public abstract class BaseAgent
                 sseEmitter.completeWithError(e);
             } finally {
                 // 3、清理资源
+                if (StrUtil.isNotBlank(chatId))
+                {
+                    RUNNING_CHAT_IDS.remove(chatId);
+                }
                 this.cleanup();
             }
         });

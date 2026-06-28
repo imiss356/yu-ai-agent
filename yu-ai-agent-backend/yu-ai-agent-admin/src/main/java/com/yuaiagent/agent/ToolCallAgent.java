@@ -3,6 +3,7 @@ package com.yuaiagent.agent;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
+import com.yuaiagent.agent.cache.ToolResultCache;
 import com.yuaiagent.agent.model.AgentState;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -17,6 +18,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -37,14 +39,18 @@ public class ToolCallAgent extends ReActAgent
     // 工具调用管理者
     private final ToolCallingManager toolCallingManager;
 
+    // 工具结果缓存
+    private final ToolResultCache toolResultCache;
+
     // 禁用 Spring AI 内置的工具调用机制，自己维护选项和消息上下文
     private final ChatOptions chatOptions;
 
-    public ToolCallAgent(ToolCallback[] availableTools)
+    public ToolCallAgent(ToolCallback[] availableTools, ToolResultCache toolResultCache)
     {
         //调用父类BaseAgent的无参构造函数，初始化继承自父类的成员变量和状态
         super();
         this.availableTools = availableTools;
+        this.toolResultCache = toolResultCache;
         this.toolCallingManager = ToolCallingManager.builder().build();
         // 禁用 Spring AI 内置的工具调用机制，自己维护选项和消息上下文
         this.chatOptions = DashScopeChatOptions.builder()
@@ -121,7 +127,7 @@ public class ToolCallAgent extends ReActAgent
 
 
     /**
-     * 执行工具调用并处理结果
+     * 执行工具调用并处理结果（带缓存）
      *
      * @return 执行结果
      */
@@ -133,12 +139,34 @@ public class ToolCallAgent extends ReActAgent
             return "🛠️ 无需调用工具";
         }
 
-        // 调用工具
-        Prompt prompt = new Prompt(getMessageList(), this.chatOptions);
-        ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, toolCallChatResponse);
-        // 记录消息上下文，conversationHistory 已经包含了助手消息和工具调用返回的结果
-        setMessageList(toolExecutionResult.conversationHistory());
-        ToolResponseMessage toolResponseMessage = (ToolResponseMessage) CollUtil.getLast(toolExecutionResult.conversationHistory());
+        // 获取工具调用列表
+        AssistantMessage assistantMessage = toolCallChatResponse.getResult().getOutput();
+        List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
+
+        // 1. 先查缓存
+        ToolResponseMessage cachedResponse = toolResultCache.get(toolCalls);
+        ToolResponseMessage toolResponseMessage;
+
+        if (cachedResponse != null)
+        {
+            // 缓存命中：将助手消息 + 缓存的工具结果拼接到消息列表
+            List<Message> messages = new ArrayList<>(getMessageList());
+            messages.add(assistantMessage);
+            messages.add(cachedResponse);
+            setMessageList(messages);
+            toolResponseMessage = cachedResponse;
+        }
+        else
+        {
+            // 缓存未命中：正常执行工具调用
+            Prompt prompt = new Prompt(getMessageList(), this.chatOptions);
+            ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, toolCallChatResponse);
+            // 记录消息上下文
+            setMessageList(toolExecutionResult.conversationHistory());
+            toolResponseMessage = (ToolResponseMessage) CollUtil.getLast(toolExecutionResult.conversationHistory());
+            // 写入缓存
+            toolResultCache.put(toolCalls, toolResponseMessage);
+        }
 
         // 判断是否调用了终止工具
         boolean terminateToolCalled = toolResponseMessage.getResponses().stream()
@@ -148,7 +176,7 @@ public class ToolCallAgent extends ReActAgent
             // 任务结束，更改状态
             setState(AgentState.FINISHED);
         }
-        
+
         String results = toolResponseMessage.getResponses().stream()
                 .map(response -> "🛠️ 正在使用工具 " + response.name() + " 获取信息...")
                 .collect(Collectors.joining("\n"));

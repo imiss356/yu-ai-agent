@@ -1,6 +1,7 @@
 package com.yuaiagent.agent;
 
 import com.yuaiagent.advisor.MyLoggerAdvisor;
+import com.yuaiagent.agent.cache.ToolResultCache;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
@@ -12,9 +13,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class YuManus extends ToolCallAgent
 {
-    public YuManus(ToolCallback[] allTools, ChatModel openAiChatModel)
+    public YuManus(ToolCallback[] allTools, ChatModel openAiChatModel, ToolResultCache toolResultCache)
     {
-        super(allTools);
+        super(allTools, toolResultCache);
         this.setName("yuManus");
         String SYSTEM_PROMPT = """
                 You are YuManus, an all-capable AI assistant, aimed at solving any task presented by the user.

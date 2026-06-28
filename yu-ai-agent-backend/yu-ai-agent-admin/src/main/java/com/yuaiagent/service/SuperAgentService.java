@@ -1,6 +1,7 @@
 package com.yuaiagent.service;
 
 import com.yuaiagent.agent.YuManus;
+import com.yuaiagent.agent.cache.ToolResultCache;
 import com.yuaiagent.chatmemory.RedisChatMemory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,9 @@ public class SuperAgentService
     @Resource
     private ChatModel openAiChatModel;
 
+    @Resource
+    private ToolResultCache toolResultCache;
+
     private final ChatMemory chatMemory;
 
     public SuperAgentService(RedisChatMemory redisChatMemory)
@@ -39,7 +43,7 @@ public class SuperAgentService
      */
     public SseEmitter doChatByStream(String message, String chatId)
     {
-        YuManus yuManus = new YuManus(allTools, openAiChatModel);
+        YuManus yuManus = new YuManus(allTools, openAiChatModel, toolResultCache);
         yuManus.setChatId(chatId);
         yuManus.setChatMemory(chatMemory);
         return yuManus.runStream(message);
