@@ -2,13 +2,13 @@ package com.yuaiagent.service;
 
 import com.yuaiagent.advisor.MyLoggerAdvisor;
 import com.yuaiagent.chatmemory.RedisChatMemory;
-import com.yuaiagent.rag.QueryRewriter;
+import com.yuaiagent.rag.DocQARagCustomAdvisorFactory;
+import com.yuaiagent.rag.LLMReranker;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
@@ -18,6 +18,7 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+
 import java.util.List;
 
 /**
@@ -28,6 +29,7 @@ import java.util.List;
 public class DocQAService
 {
     private final ChatClient chatClient;
+    private final ChatClient.Builder chatClientBuilder;
     private final ChatMemory chatMemory;
 
     private static final String SYSTEM_PROMPT = """
@@ -35,12 +37,14 @@ public class DocQAService
             你可以回答关于编程语言、框架、工具、最佳实践等技术问题。
             请基于提供的文档内容给出准确、清晰的回答。
             如果文档中没有相关信息，请诚实告知用户，并给出相关建议。
+            回答时请注明参考的文档来源和章节，例如"根据《文档名》的「章节名」..."。
             """;
 
     public DocQAService(ChatModel openAiChatModel, RedisChatMemory redisChatMemory)
     {
         this.chatMemory = redisChatMemory;
-        chatClient = ChatClient.builder(openAiChatModel)
+        this.chatClientBuilder = ChatClient.builder(openAiChatModel);
+        chatClient = chatClientBuilder
                 .defaultSystem(SYSTEM_PROMPT)
                 .defaultAdvisors(
                         MessageChatMemoryAdvisor.builder(chatMemory).build(),
@@ -133,20 +137,38 @@ public class DocQAService
     private VectorStore pgVectorVectorStore;
 
     @Resource
-    private QueryRewriter queryRewriter;
+    private LLMReranker llmReranker;
+
+    /** 增强版 RAG Advisor（懒加载，首次使用时构建） */
+    private Advisor enhancedRagAdvisor;
 
     /**
-     * 和 RAG 知识库进行对话
+     * 获取增强版 RAG Advisor（多查询扩展 + LLM Reranking）
+     */
+    private Advisor getEnhancedRagAdvisor()
+    {
+        if (enhancedRagAdvisor == null)
+        {
+            enhancedRagAdvisor = DocQARagCustomAdvisorFactory.createDocQARagCustomAdvisor(
+                    docQAVectorStore,
+                    "tech-doc",
+                    chatClientBuilder,
+                    llmReranker
+            );
+        }
+        return enhancedRagAdvisor;
+    }
+
+    /**
+     * 和 RAG 知识库进行对话（增强版：多查询扩展 + LLM Reranking + 来源标注）
      */
     public String doChatWithRag(String message, String chatId)
     {
-        String rewrittenMessage = queryRewriter.doQueryRewrite(message);
         ChatResponse chatResponse = chatClient
                 .prompt()
-                .user(rewrittenMessage)
+                .user(message)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
-                .advisors(new MyLoggerAdvisor())
-                .advisors(new QuestionAnswerAdvisor(docQAVectorStore))
+                .advisors(getEnhancedRagAdvisor())
                 .call()
                 .chatResponse();
         String content = chatResponse.getResult().getOutput().getText();
