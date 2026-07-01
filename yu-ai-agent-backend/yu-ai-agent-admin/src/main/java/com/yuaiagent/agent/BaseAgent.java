@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 描述：抽象基础代理类，用于管理代理状态和执行流程。
@@ -25,8 +27,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public abstract class BaseAgent
 {
-    /** 正在运行的 chatId 集合（全局共享，防止同一对话并发执行） */
-    private static final ConcurrentHashMap<String, Boolean> RUNNING_CHAT_IDS = new ConcurrentHashMap<>();
+    /** 每个 chatId 对应一个信号量（容量1），用于排队而非拒绝 */
+    private static final ConcurrentHashMap<String, Semaphore> CHAT_SEMAPHORES = new ConcurrentHashMap<>();
+    /** 排队等待超时时间（秒） */
+    private static final int QUEUE_TIMEOUT_SECONDS = 30;
 
     // 核心属性
     private String name;
@@ -71,12 +75,21 @@ public abstract class BaseAgent
             throw new RuntimeException("Cannot run agent with empty user prompt");
         }
 
-        // 并发去重：同一 chatId 不允许同时执行
+        // 并发排队：同一 chatId 串行执行，新请求等待而非拒绝
         if (StrUtil.isNotBlank(chatId))
         {
-            if (RUNNING_CHAT_IDS.putIfAbsent(chatId, Boolean.TRUE) != null)
+            Semaphore semaphore = CHAT_SEMAPHORES.computeIfAbsent(chatId, k -> new Semaphore(1));
+            try
             {
-                throw new RuntimeException("该对话正在执行中，请稍后再试 (chatId: " + chatId + ")");
+                if (!semaphore.tryAcquire(QUEUE_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                {
+                    throw new RuntimeException("该对话排队超时，请稍后再试 (chatId: " + chatId + ")");
+                }
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("等待排队被中断 (chatId: " + chatId + ")");
             }
         }
 
@@ -127,10 +140,13 @@ public abstract class BaseAgent
             log.error("error executing agent", e);
             return "执行错误" + e.getMessage();
         } finally {
-            // 3、清理资源
+            // 3、释放信号量、清理资源
             if (StrUtil.isNotBlank(chatId))
             {
-                RUNNING_CHAT_IDS.remove(chatId);
+                Semaphore semaphore = CHAT_SEMAPHORES.get(chatId);
+                if (semaphore != null) {
+                    semaphore.release();
+                }
             }
             this.cleanup();
         }
@@ -154,19 +170,8 @@ public abstract class BaseAgent
             throw new RuntimeException("Cannot run agent with empty user prompt");
         }
 
-        // 并发去重：同一 chatId 不允许同时执行
-        if (StrUtil.isNotBlank(chatId))
-        {
-            if (RUNNING_CHAT_IDS.putIfAbsent(chatId, Boolean.TRUE) != null)
-            {
-                throw new RuntimeException("该对话正在执行中，请稍后再试 (chatId: " + chatId + ")");
-            }
-        }
-
         // 创建一个超时时间较长的 SseEmitter
         SseEmitter sseEmitter = new SseEmitter(180000L); // 3 分钟超时
-        // 2、异步执行代理，更改状态
-        this.state = AgentState.RUNNING;
 
         // 加载记忆
         if (StrUtil.isNotBlank(chatId) && chatMemory != null) {
@@ -180,7 +185,27 @@ public abstract class BaseAgent
         messageList.add(new UserMessage(userPrompt));
 
         CompletableFuture.runAsync(() -> {
+            boolean acquired = false;
             try {
+                // 并发排队：同一 chatId 串行执行，新请求等待而非拒绝
+                if (StrUtil.isNotBlank(chatId)) {
+                    Semaphore semaphore = CHAT_SEMAPHORES.computeIfAbsent(chatId, k -> new Semaphore(1));
+                    if (!semaphore.tryAcquire(0, TimeUnit.SECONDS)) {
+                        // 立即拿不到锁，通知前端正在排队
+                        sseEmitter.send("⏳ 已有请求正在处理，正在排队等待中...");
+                        if (!semaphore.tryAcquire(QUEUE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                            sseEmitter.send("⏳ 排队超时，请稍后再试");
+                            sseEmitter.send("[DONE]");
+                            sseEmitter.complete();
+                            return;
+                        }
+                    }
+                    acquired = true;
+                }
+
+                // 2、异步执行代理，更改状态
+                this.state = AgentState.RUNNING;
+
                 // 执行循环
                 for (int i = 0; i < maxSteps && state != AgentState.FINISHED; i++)
                 {
@@ -198,12 +223,12 @@ public abstract class BaseAgent
                     state = AgentState.FINISHED;
                     sseEmitter.send("Terminated: Reached max steps (" + maxSteps + ")");
                 }
-                
+
                 // 保存记忆
                 if (StrUtil.isNotBlank(chatId) && chatMemory != null) {
                     chatMemory.add(chatId, messageList);
                 }
-                
+
                 // 执行结束，发送完成标志
                 sseEmitter.send("[DONE]");
                 sseEmitter.complete();
@@ -217,10 +242,13 @@ public abstract class BaseAgent
                 }
                 sseEmitter.completeWithError(e);
             } finally {
-                // 3、清理资源
-                if (StrUtil.isNotBlank(chatId))
+                // 3、释放信号量、清理资源
+                if (acquired && StrUtil.isNotBlank(chatId))
                 {
-                    RUNNING_CHAT_IDS.remove(chatId);
+                    Semaphore semaphore = CHAT_SEMAPHORES.get(chatId);
+                    if (semaphore != null) {
+                        semaphore.release();
+                    }
                 }
                 this.cleanup();
             }

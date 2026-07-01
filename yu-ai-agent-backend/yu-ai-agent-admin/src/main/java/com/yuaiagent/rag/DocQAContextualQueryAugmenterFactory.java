@@ -29,10 +29,12 @@ public class DocQAContextualQueryAugmenterFactory
 
     /**
      * 空上下文时的提示模板
+     * 注意：这里只告知"未找到"，不拒绝回答，让 Agent 有机会用其他工具（如搜索）补充信息
      */
     private static final String EMPTY_CONTEXT_PROMPT = """
-            抱歉，我只能回答技术文档相关的问题，别的没办法帮到您哦。
-            请尝试询问关于编程语言、框架、工具或最佳实践方面的问题。
+            知识库中未找到与该问题直接相关的文档内容。
+            请根据你已有的知识尽可能回答，并告知用户该回答未参考知识库文档。
+            如果你认为需要更多信息，可以尝试使用其他工具（如搜索网页）来获取答案。
             """;
 
     public static ContextualQueryAugmenter createInstance()

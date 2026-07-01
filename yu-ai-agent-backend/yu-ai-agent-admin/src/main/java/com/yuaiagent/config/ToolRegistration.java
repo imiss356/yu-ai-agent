@@ -1,6 +1,7 @@
 package com.yuaiagent.config;
 
 import com.yuaiagent.tools.*;
+import jakarta.annotation.Resource;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,10 +12,13 @@ import org.springframework.context.annotation.Configuration;
  * 描述：集中的工具注册类
  */
 @Configuration
-public class ToolRegistration
-{
+public class ToolRegistration {
+
     @Value("${search-api.api-key}")
     private String searchApiKey;
+
+    @Resource
+    private DocQATool docQATool;
 
     @Bean
     public ToolCallback[] allTools() {
@@ -25,6 +29,7 @@ public class ToolRegistration
         TerminalOperationTool terminalOperationTool = new TerminalOperationTool();
         PDFGenerationTool pdfGenerationTool = new PDFGenerationTool();
         TerminateTool terminateTool = new TerminateTool();
+
         return ToolCallbacks.from(
                 fileOperationTool,
                 webSearchTool,
@@ -32,6 +37,7 @@ public class ToolRegistration
                 resourceDownloadTool,
                 terminalOperationTool,
                 pdfGenerationTool,
+                docQATool,  // 新增：文档问答工具
                 terminateTool
         );
     }

@@ -68,15 +68,14 @@ export const connectSSE = (url, params) => {
 export const register = (data) => request.post('/auth/register', data)
 export const login = (data) => request.post('/auth/login', data)
 
-// AI 智能文档助手聊天
-export const chatWithDocQA = (message, chatId) => {
-  return connectSSE('/ai/doc_qa/chat/sse', { message, chatId })
+// AI 统一智能体聊天（合并了 DocQA 和 SuperAgent）
+export const chat = (message, chatId) => {
+  return connectSSE('/ai/chat', { message, chatId })
 }
 
-// AI 超级智能体聊天
-export const chatWithManus = (message, chatId) => {
-  return connectSSE('/ai/manus/chat', { message, chatId })
-}
+// 兼容旧接口（已废弃）
+export const chatWithDocQA = chat
+export const chatWithManus = chat
 
 // 获取会话列表
 export const getSessions = (type) => {

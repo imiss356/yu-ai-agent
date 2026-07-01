@@ -80,17 +80,49 @@ public class ToolResultCache
     }
 
     /**
-     * 写入缓存
+     * 写入缓存（错误结果不缓存，避免错误被持久化 5 分钟）
      *
      * @param toolCalls         工具调用列表
      * @param toolResponseMessage 工具执行结果
      */
     public void put(List<AssistantMessage.ToolCall> toolCalls, ToolResponseMessage toolResponseMessage)
     {
+        // 检查是否为错误结果，错误不缓存
+        boolean hasError = toolResponseMessage.getResponses().stream()
+                .anyMatch(response -> isErrorResponse(response.responseData()));
+        if (hasError)
+        {
+            log.info("工具调用结果包含错误，跳过缓存，工具: {}", toolCalls.stream()
+                    .map(AssistantMessage.ToolCall::name)
+                    .collect(Collectors.joining(", ")));
+            return;
+        }
+
         String key = generateKey(toolCalls);
         cache.put(key, toolResponseMessage);
         log.debug("工具调用结果已缓存，工具: {}", toolCalls.stream()
                 .map(AssistantMessage.ToolCall::name)
                 .collect(Collectors.joining(", ")));
+    }
+
+    /**
+     * 判断工具返回内容是否为错误信息
+     */
+    private boolean isErrorResponse(String text)
+    {
+        if (text == null)
+        {
+            return false;
+        }
+        String lower = text.toLowerCase();
+        return lower.startsWith("error")
+                || lower.startsWith("工具执行失败")
+                || lower.contains("执行失败")
+                || lower.contains("查询失败")
+                || lower.contains("searching baidu: ")
+                || lower.contains("scraping web page: ")
+                || lower.contains("downloading resource: ")
+                || lower.contains("generating pdf: ")
+                || lower.contains("execution failed with exit code");
     }
 }

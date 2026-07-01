@@ -3,6 +3,7 @@ package com.yuaiagent.agent;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.messages.AssistantMessage;
 
 /**
  * 描述：ReAct (Reasoning and Acting) 模式的代理抽象类
@@ -53,6 +54,8 @@ public abstract class ReActAgent extends BaseAgent
         } catch (Exception e) {
             // 记录异常日志
             log.error("Step execution failed", e);
+            // 将错误写入消息列表，让 LLM 下一步能感知到失败并调整策略
+            getMessageList().add(new AssistantMessage("步骤执行失败：" + e.getMessage()));
             return "步骤执行失败：" + e.getMessage();
         }
     }
